@@ -57,15 +57,40 @@ openssl req -x509 -newkey rsa:4096 -keyout certs/server.key -out certs/server.cr
 
 ### Step 3: Start the Server
 
-Start the HTTP server:
+Start the HTTP server (supports HTTP/1.1, HTTP/2, and HTTP/3):
+
+**macOS/Linux:**
 
 ```bash
 go run .
 ```
 
-The server will start on port 8080 (or the port specified by the `PORT` environment variable).
+**Windows (PowerShell):**
 
-Open http://localhost:8080 in your browser to verify the page loads with all images.
+```powershell
+go run .
+```
+
+The server will start on:
+- **HTTP/1.1**: `http://localhost:8080` (plain HTTP)
+- **HTTP/1.1 + HTTP/2**: `https://localhost:8443` (TLS)
+- **HTTP/3**: `https://localhost:8443` (QUIC/UDP)
+
+You can customize ports with environment variables:
+
+**macOS/Linux:**
+
+```bash
+HTTP_PORT=8080 HTTPS_PORT=8443 go run .
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:HTTP_PORT="8080"; $env:HTTPS_PORT="8443"; go run .
+```
+
+Open <http://localhost:8080> in your browser to verify the page loads with all images.
 
 ### Step 4: Run Benchmarks with k6
 
@@ -103,6 +128,8 @@ k6 run http_benchmark.js -e TARGET_HOST='https://localhost:8080' -e K6_PROTOCOL=
 
 ## Quick Start Summary
 
+**macOS/Linux:**
+
 ```bash
 # 1. Download test images
 go run ./cmd/image_downloader
@@ -116,6 +143,25 @@ go run .
 
 # 4. Run benchmark (in another terminal)
 k6 run http_benchmark.js -e TARGET_HOST='http://localhost:8080'
+k6 run http_benchmark.js -e TARGET_HOST='https://localhost:8443' -e K6_PROTOCOL='2'
+```
+
+**Windows (PowerShell):**
+
+```powershell
+# 1. Download test images
+go run ./cmd/image_downloader
+
+# 2. Generate SSL certificates (requires OpenSSL installed, e.g., via Git Bash or chocolatey)
+New-Item -ItemType Directory -Force -Path certs
+openssl req -x509 -newkey rsa:4096 -keyout certs/server.key -out certs/server.crt -days 365 -nodes -subj "/CN=localhost"
+
+# 3. Start the server
+go run .
+
+# 4. Run benchmark (in another terminal)
+k6 run http_benchmark.js -e TARGET_HOST='http://localhost:8080'
+k6 run http_benchmark.js -e TARGET_HOST='https://localhost:8443' -e K6_PROTOCOL='2'
 ```
 
 ## License
