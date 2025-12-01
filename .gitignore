@@ -1,0 +1,5 @@
+# Ignore downloaded images
+static/images/
+
+# Ignore certificates
+certs/
