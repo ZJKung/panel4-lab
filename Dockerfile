@@ -29,8 +29,15 @@ COPY --from=builder /server /server
 # Copy the static assets
 COPY static static
 
-# Cloud Run environment variable. Must be non-privileged (e.g., 8080).
+# Default port - Fly.io and Cloud Run will set PORT env var
 ENV PORT=8080
+
+# DEPLOY_MODE can be: flyio, cloudrun, or empty (benchmark mode)
+# Set via fly.toml or cloud run config
+ENV DEPLOY_MODE=""
+
+# Expose the port
+EXPOSE 8080
 
 # Command to run the executable
 CMD ["/server"]

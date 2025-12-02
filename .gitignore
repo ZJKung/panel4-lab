@@ -3,3 +3,7 @@ static/images/
 
 # Ignore certificates
 certs/
+
+
+# npm dependencies
+node_modules/

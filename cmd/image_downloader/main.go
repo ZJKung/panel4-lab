@@ -19,7 +19,7 @@ const (
 	totalImages = 100
 	largeCount  = 5
 	smallSize   = 300  // 300x300 pixels for small images
-	largeSize   = 1200 // 1200x1200 pixels for large images
+	largeSize   = 2400 // 2400x2400 pixels for large images
 )
 
 // ImageConfig holds the details for a single image to be downloaded.
