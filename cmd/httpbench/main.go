@@ -63,7 +63,7 @@ type BenchmarkResult struct {
 }
 
 func main() {
-	url := flag.String("url", "https://http-evolution-benchmark.zjkung1123.workers.dev/api/protocol", "URL to benchmark")
+	url := flag.String("url", "", "URL to benchmark")
 	requests := flag.Int("n", 100, "Number of requests per protocol")
 	concurrency := flag.Int("c", 10, "Number of concurrent requests")
 	protocols := flag.String("p", "h1,h2,h3", "Protocols to test (comma-separated: h1,h2,h3)")
