@@ -5,5 +5,9 @@ compatibility_date = "2024-01-01"
 # Enable HTTP/3 (enabled by default on Cloudflare)
 # No special config needed - Cloudflare handles HTTP/3 automatically
 
+# Serve static assets from the static folder
+[assets]
+directory = "../static"
+
 [vars]
 ENVIRONMENT = "production"

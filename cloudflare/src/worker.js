@@ -16,22 +16,23 @@ export default {
       "Content-Type": "application/json",
     };
 
-    // Route handling
+    // API Route handling
     switch (path) {
-      case "/":
+      case "/api":
         return new Response(
           JSON.stringify(
             {
               message: "HTTP Evolution Benchmark Server (Cloudflare Workers)",
               endpoints: {
-                "/": "This help message",
-                "/health": "Health check endpoint",
-                "/protocol":
+                "/": "Static HTML page with images for benchmark testing",
+                "/api": "This API help message",
+                "/api/health": "Health check endpoint",
+                "/api/protocol":
                   "Show protocol information (HTTP/1.1, HTTP/2, HTTP/3)",
-                "/small": "Small payload (~100 bytes)",
-                "/medium": "Medium payload (~10KB)",
-                "/large": "Large payload (~100KB)",
-                "/latency": "Minimal response for latency testing",
+                "/api/small": "Small payload (~100 bytes)",
+                "/api/medium": "Medium payload (~10KB)",
+                "/api/large": "Large payload (~100KB)",
+                "/api/latency": "Minimal response for latency testing",
               },
               note: "Cloudflare automatically serves HTTP/3 when client supports it",
             },
@@ -41,29 +42,28 @@ export default {
           { headers }
         );
 
-      case "/health":
+      case "/api/health":
         return new Response(JSON.stringify({ status: "ok" }), { headers });
 
-      case "/protocol":
+      case "/api/protocol":
         return handleProtocol(request, headers);
 
-      case "/small":
+      case "/api/small":
         return handleSmall(headers);
 
-      case "/medium":
+      case "/api/medium":
         return handleMedium(headers);
 
-      case "/large":
+      case "/api/large":
         return handleLarge(headers);
 
-      case "/latency":
+      case "/api/latency":
         return new Response(JSON.stringify({ ts: Date.now() }), { headers });
 
       default:
-        return new Response(JSON.stringify({ error: "Not Found" }), {
-          status: 404,
-          headers,
-        });
+        // For non-API routes, let Cloudflare's static asset serving handle it
+        // This will serve files from the static folder (index.html, images, etc.)
+        return env.ASSETS.fetch(request);
     }
   },
 };

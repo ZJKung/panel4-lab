@@ -7,3 +7,9 @@ certs/
 
 # npm dependencies
 node_modules/
+
+#python
+.venv/
+__pycache__/
+
+results/
