@@ -29,10 +29,6 @@ export default {
                 "/api/health": "Health check endpoint",
                 "/api/protocol":
                   "Show protocol information (HTTP/1.1, HTTP/2, HTTP/3)",
-                "/api/small": "Small payload (~100 bytes)",
-                "/api/medium": "Medium payload (~10KB)",
-                "/api/large": "Large payload (~100KB)",
-                "/api/latency": "Minimal response for latency testing",
               },
               note: "Cloudflare automatically serves HTTP/3 when client supports it",
             },
@@ -47,18 +43,6 @@ export default {
 
       case "/api/protocol":
         return handleProtocol(request, headers);
-
-      case "/api/small":
-        return handleSmall(headers);
-
-      case "/api/medium":
-        return handleMedium(headers);
-
-      case "/api/large":
-        return handleLarge(headers);
-
-      case "/api/latency":
-        return new Response(JSON.stringify({ ts: Date.now() }), { headers });
 
       default:
         // For non-API routes, let Cloudflare's static asset serving handle it
@@ -97,52 +81,4 @@ function handleProtocol(request, headers) {
   };
 
   return new Response(JSON.stringify(response, null, 2), { headers });
-}
-
-/**
- * Small payload (~100 bytes) for testing request overhead
- */
-function handleSmall(headers) {
-  const data = {
-    size: "small",
-    data: "x".repeat(50),
-    timestamp: Date.now(),
-  };
-  return new Response(JSON.stringify(data), { headers });
-}
-
-/**
- * Medium payload (~10KB) for typical API response testing
- */
-function handleMedium(headers) {
-  const items = [];
-  for (let i = 0; i < 100; i++) {
-    items.push({
-      id: i,
-      name: `Item ${i}`,
-      description: "x".repeat(50),
-      timestamp: Date.now(),
-    });
-  }
-  return new Response(JSON.stringify({ size: "medium", items }), { headers });
-}
-
-/**
- * Large payload (~100KB) for testing throughput
- */
-function handleLarge(headers) {
-  const items = [];
-  for (let i = 0; i < 500; i++) {
-    items.push({
-      id: i,
-      name: `Item ${i}`,
-      description: "x".repeat(150),
-      metadata: {
-        created: Date.now(),
-        tags: ["benchmark", "test", "http3"],
-        attributes: { a: 1, b: 2, c: 3 },
-      },
-    });
-  }
-  return new Response(JSON.stringify({ size: "large", items }), { headers });
 }
