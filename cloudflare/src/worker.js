@@ -13,7 +13,6 @@ export default {
     // Add Cache-Control: no-store to all responses for accurate benchmarking
     const headers = {
       "Cache-Control": "no-store, no-cache, must-revalidate",
-      "Content-Type": "application/json",
     };
 
     // API Route handling
@@ -29,8 +28,8 @@ export default {
                 "/api/health": "Health check endpoint",
                 "/api/protocol":
                   "Show protocol information (HTTP/1.1, HTTP/2, HTTP/3)",
-                "/100mb.bin":
-                  "100MB binary file for large file download benchmark (dynamically generated)",
+                "/LargeFile":
+                  "25MB binary file for large file download benchmark (dynamically generated)",
               },
               note: "Cloudflare automatically serves HTTP/3 when client supports it",
             },
@@ -46,8 +45,8 @@ export default {
       case "/api/protocol":
         return handleProtocol(request, headers);
 
-      case "/100mb.bin":
-        return handleLargeFile(100);
+      case "/LargeFile":
+        return handleLargeFile(25); // 25MB file
 
       default:
         // For non-API routes, let Cloudflare's static asset serving handle it
