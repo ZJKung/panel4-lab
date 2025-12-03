@@ -29,6 +29,8 @@ export default {
                 "/api/health": "Health check endpoint",
                 "/api/protocol":
                   "Show protocol information (HTTP/1.1, HTTP/2, HTTP/3)",
+                "/100mb.bin":
+                  "100MB binary file for large file download benchmark (dynamically generated)",
               },
               note: "Cloudflare automatically serves HTTP/3 when client supports it",
             },
@@ -43,6 +45,9 @@ export default {
 
       case "/api/protocol":
         return handleProtocol(request, headers);
+
+      case "/100mb.bin":
+        return handleLargeFile(100);
 
       default:
         // For non-API routes, let Cloudflare's static asset serving handle it
@@ -81,4 +86,54 @@ function handleProtocol(request, headers) {
   };
 
   return new Response(JSON.stringify(response, null, 2), { headers });
+}
+
+/**
+ * Large file endpoint - generates a binary file of specified size for download benchmarking
+ *
+ * Uses streaming to efficiently generate large files without memory issues
+ * @param {number} sizeMB - Size of the file in megabytes
+ */
+function handleLargeFile(sizeMB) {
+  const sizeBytes = sizeMB * 1024 * 1024;
+  const chunkSize = 64 * 1024; // 64KB chunks for efficient streaming
+
+  // Create a ReadableStream that generates binary data
+  const stream = new ReadableStream({
+    start(controller) {
+      let bytesRemaining = sizeBytes;
+
+      function pushChunk() {
+        if (bytesRemaining <= 0) {
+          controller.close();
+          return;
+        }
+
+        const currentChunkSize = Math.min(chunkSize, bytesRemaining);
+        const chunk = new Uint8Array(currentChunkSize);
+
+        // Fill with pseudo-random data for more realistic download testing
+        for (let i = 0; i < currentChunkSize; i++) {
+          chunk[i] = (i * 7 + bytesRemaining) & 0xff;
+        }
+
+        controller.enqueue(chunk);
+        bytesRemaining -= currentChunkSize;
+
+        // Continue pushing chunks
+        pushChunk();
+      }
+
+      pushChunk();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": sizeBytes.toString(),
+      "Content-Disposition": `attachment; filename="${sizeMB}mb.bin"`,
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    },
+  });
 }
