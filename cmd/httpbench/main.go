@@ -184,8 +184,8 @@ func runBenchmark(url, protocol string, numRequests, concurrency, warmupRequests
 			defer func() { <-semaphore }()
 
 			result := makeRequest(client, url, protocol)
-			if result.Error != nil && reqNum == 0 {
-				fmt.Printf("  Error (sample): %v\n", result.Error)
+			if result.Error != nil {
+				fmt.Printf("  Error [req %d]: %v\n", reqNum, result.Error)
 			}
 			mu.Lock()
 			results = append(results, result)
@@ -233,13 +233,17 @@ func createClient(protocol string) *http.Client {
 				InsecureSkipVerify: false,
 			},
 			QUICConfig: &quic.Config{
-				MaxIdleTimeout:  30 * time.Second,
-				KeepAlivePeriod: 10 * time.Second,
+				MaxIdleTimeout:        60 * time.Second,
+				KeepAlivePeriod:       15 * time.Second,
+				HandshakeIdleTimeout:  10 * time.Second,
+				MaxIncomingStreams:    1000,
+				MaxIncomingUniStreams: 1000,
+				EnableDatagrams:       true,
 			},
 		}
 		return &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   60 * time.Second,
 		}
 
 	default:
