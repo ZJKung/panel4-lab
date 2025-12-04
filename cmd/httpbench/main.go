@@ -10,8 +10,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"os"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
@@ -62,12 +65,19 @@ type BenchmarkResult struct {
 	RequestsPerSecond float64
 }
 
+// Global flags
+var browserMode bool
+var noCacheBust bool
+
 func main() {
 	url := flag.String("url", "", "URL to benchmark")
 	requests := flag.Int("n", 100, "Number of requests per protocol")
 	concurrency := flag.Int("c", 10, "Number of concurrent requests")
 	protocols := flag.String("p", "h1,h2,h3", "Protocols to test (comma-separated: h1,h2,h3)")
 	outputDir := flag.String("o", "", "Output directory to save JSON results (optional)")
+	warmup := flag.Int("w", 5, "Number of warmup requests per protocol (0 to disable)")
+	flag.BoolVar(&browserMode, "browser", false, "Simulate browser behavior (parallel downloads like browser)")
+	flag.BoolVar(&noCacheBust, "no-cache-bust", false, "Disable cache busting (allow CDN/browser caching)")
 	flag.Parse()
 
 	fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
@@ -76,6 +86,9 @@ func main() {
 	fmt.Printf("\nTarget URL: %s\n", *url)
 	fmt.Printf("Requests per protocol: %d\n", *requests)
 	fmt.Printf("Concurrency: %d\n", *concurrency)
+	fmt.Printf("Warmup requests: %d\n", *warmup)
+	fmt.Printf("Browser mode: %v\n", browserMode)
+	fmt.Printf("Cache busting: %v\n", !noCacheBust)
 	fmt.Printf("Protocols: %s\n\n", *protocols)
 
 	results := make(map[string]*BenchmarkResult)
@@ -85,7 +98,7 @@ func main() {
 
 	for _, proto := range protocolList {
 		fmt.Printf("Testing %s...\n", proto)
-		result := runBenchmark(*url, proto, *requests, *concurrency)
+		result := runBenchmark(*url, proto, *requests, *concurrency, *warmup)
 		results[proto] = result
 		fmt.Printf("  Completed: %d/%d successful\n", result.SuccessfulRequests, result.TotalRequests)
 	}
@@ -131,9 +144,32 @@ func splitString(s string, sep rune) []string {
 	return result
 }
 
-func runBenchmark(url, protocol string, numRequests, concurrency int) *BenchmarkResult {
+func runBenchmark(url, protocol string, numRequests, concurrency, warmupRequests int) *BenchmarkResult {
 	client := createClient(protocol)
 	defer closeClient(client, protocol)
+
+	// Warmup phase - establish connections and warm caches
+	if warmupRequests > 0 {
+		fmt.Printf("  Warming up with %d requests...\n", warmupRequests)
+		var warmupWg sync.WaitGroup
+		warmupSem := make(chan struct{}, concurrency)
+		for i := 0; i < warmupRequests; i++ {
+			warmupWg.Add(1)
+			warmupSem <- struct{}{}
+			go func() {
+				defer warmupWg.Done()
+				defer func() { <-warmupSem }()
+				defer func() {
+					if r := recover(); r != nil {
+						// Silently recover from warmup panics
+					}
+				}()
+				makeRequest(client, url, protocol)
+			}()
+		}
+		warmupWg.Wait()
+		fmt.Printf("  Warmup complete. Starting benchmark...\n")
+	}
 
 	results := make([]TimingResult, 0, numRequests)
 	var mu sync.Mutex
@@ -257,10 +293,27 @@ func makeRequest(client *http.Client, url, protocol string) TimingResult {
 	}
 
 	ctx := httptrace.WithClientTrace(context.Background(), trace)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+
+	finalURL := url
+	// Add cache-busting query parameter (unless disabled)
+	if !noCacheBust {
+		if strings.Contains(url, "?") {
+			finalURL = fmt.Sprintf("%s&_cb=%d", url, time.Now().UnixNano())
+		} else {
+			finalURL = fmt.Sprintf("%s?_cb=%d", url, time.Now().UnixNano())
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", finalURL, nil)
 	if err != nil {
 		result.Error = err
 		return result
+	}
+
+	// Add headers to prevent caching (unless cache-bust disabled)
+	if !noCacheBust {
+		req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		req.Header.Set("Pragma", "no-cache")
 	}
 
 	resp, err := client.Do(req)
@@ -271,10 +324,17 @@ func makeRequest(client *http.Client, url, protocol string) TimingResult {
 	}
 	defer resp.Body.Close()
 
-	// Read body to ensure full transfer
-	_, err = io.Copy(io.Discard, resp.Body)
+	// Read body content
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		result.Error = err
+		return result
+	}
+
+	// Check if content is HTML and download images
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") {
+		downloadImages(client, url, body, protocol)
 	}
 
 	requestEnd := time.Now()
@@ -300,6 +360,99 @@ func makeRequest(client *http.Client, url, protocol string) TimingResult {
 	}
 
 	return result
+}
+
+// downloadImages parses HTML content and downloads all images found in <img src="..."> tags
+func downloadImages(client *http.Client, baseURL string, htmlContent []byte, protocol string) {
+	// Parse base URL for resolving relative paths
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return
+	}
+
+	// Find all img src attributes using regex
+	imgRegex := regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
+	matches := imgRegex.FindAllSubmatch(htmlContent, -1)
+
+	// Browser-like parallel downloads:
+	// - HTTP/1.1: 6 connections per host (browser default)
+	// - HTTP/2 & HTTP/3: All requests multiplexed on single connection
+	var maxConcurrentDownloads int
+	if browserMode {
+		if protocol == "h1" {
+			maxConcurrentDownloads = 6 // Browser limit for HTTP/1.1
+		} else {
+			maxConcurrentDownloads = len(matches) // H2/H3 can multiplex all
+			if maxConcurrentDownloads == 0 {
+				maxConcurrentDownloads = 1
+			}
+		}
+	} else {
+		maxConcurrentDownloads = 5 // Conservative default
+	}
+	semaphore := make(chan struct{}, maxConcurrentDownloads)
+
+	var wg sync.WaitGroup
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		imgSrc := string(match[1])
+
+		// Resolve relative URLs
+		imgURL, err := url.Parse(imgSrc)
+		if err != nil {
+			continue
+		}
+		resolvedURL := base.ResolveReference(imgURL)
+
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire semaphore
+		go func(imageURL string) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release semaphore
+			defer func() {
+				if r := recover(); r != nil {
+					// Silently recover
+				}
+			}()
+			downloadImage(client, imageURL)
+		}(resolvedURL.String())
+	}
+	wg.Wait()
+}
+
+// downloadImage downloads a single image and discards the content
+func downloadImage(client *http.Client, imageURL string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	finalURL := imageURL
+	if !noCacheBust {
+		if strings.Contains(imageURL, "?") {
+			finalURL = fmt.Sprintf("%s&_cb=%d", imageURL, time.Now().UnixNano())
+		} else {
+			finalURL = fmt.Sprintf("%s?_cb=%d", imageURL, time.Now().UnixNano())
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", finalURL, nil)
+	if err != nil {
+		return
+	}
+
+	if !noCacheBust {
+		req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		req.Header.Set("Pragma", "no-cache")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	io.Copy(io.Discard, resp.Body)
 }
 
 func aggregateResults(protocol string, results []TimingResult, totalDuration time.Duration) *BenchmarkResult {
