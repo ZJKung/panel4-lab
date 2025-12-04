@@ -67,7 +67,6 @@ type BenchmarkResult struct {
 
 // Global flags
 var browserMode bool
-var noCacheBust bool
 
 func main() {
 	url := flag.String("url", "", "URL to benchmark")
@@ -77,7 +76,6 @@ func main() {
 	outputDir := flag.String("o", "", "Output directory to save JSON results (optional)")
 	warmup := flag.Int("w", 5, "Number of warmup requests per protocol (0 to disable)")
 	flag.BoolVar(&browserMode, "browser", false, "Simulate browser behavior (parallel downloads like browser)")
-	flag.BoolVar(&noCacheBust, "no-cache-bust", false, "Disable cache busting (allow CDN/browser caching)")
 	flag.Parse()
 
 	fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
@@ -88,7 +86,6 @@ func main() {
 	fmt.Printf("Concurrency: %d\n", *concurrency)
 	fmt.Printf("Warmup requests: %d\n", *warmup)
 	fmt.Printf("Browser mode: %v\n", browserMode)
-	fmt.Printf("Cache busting: %v\n", !noCacheBust)
 	fmt.Printf("Protocols: %s\n\n", *protocols)
 
 	results := make(map[string]*BenchmarkResult)
@@ -295,14 +292,6 @@ func makeRequest(client *http.Client, url, protocol string) TimingResult {
 	ctx := httptrace.WithClientTrace(context.Background(), trace)
 
 	finalURL := url
-	// Add cache-busting query parameter (unless disabled)
-	if !noCacheBust {
-		if strings.Contains(url, "?") {
-			finalURL = fmt.Sprintf("%s&_cb=%d", url, time.Now().UnixNano())
-		} else {
-			finalURL = fmt.Sprintf("%s?_cb=%d", url, time.Now().UnixNano())
-		}
-	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", finalURL, nil)
 	if err != nil {
@@ -311,10 +300,8 @@ func makeRequest(client *http.Client, url, protocol string) TimingResult {
 	}
 
 	// Add headers to prevent caching (unless cache-bust disabled)
-	if !noCacheBust {
-		req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		req.Header.Set("Pragma", "no-cache")
-	}
+	req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	req.Header.Set("Pragma", "no-cache")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -428,23 +415,14 @@ func downloadImage(client *http.Client, imageURL string) {
 	defer cancel()
 
 	finalURL := imageURL
-	if !noCacheBust {
-		if strings.Contains(imageURL, "?") {
-			finalURL = fmt.Sprintf("%s&_cb=%d", imageURL, time.Now().UnixNano())
-		} else {
-			finalURL = fmt.Sprintf("%s?_cb=%d", imageURL, time.Now().UnixNano())
-		}
-	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", finalURL, nil)
 	if err != nil {
 		return
 	}
 
-	if !noCacheBust {
-		req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		req.Header.Set("Pragma", "no-cache")
-	}
+	req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	req.Header.Set("Pragma", "no-cache")
 
 	resp, err := client.Do(req)
 	if err != nil {
