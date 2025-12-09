@@ -207,24 +207,31 @@ func createClient(protocol string) *http.Client {
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: false,
 				},
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 100,
+				MaxIdleConns:        200,
+				MaxIdleConnsPerHost: 200,
+				MaxConnsPerHost:     50, // Limit concurrent connections to prevent overload
 				IdleConnTimeout:     90 * time.Second,
 				TLSNextProto:        make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP/2
 			},
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Increased for large page loads
 		}
 
 	case "h2":
-		transport := &http2.Transport{
+		// Use standard transport with HTTP/2 for better connection management
+		transport := &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: false,
 			},
-			AllowHTTP: false,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 200,
+			MaxConnsPerHost:     10, // H2 multiplexes, so fewer connections needed
+			IdleConnTimeout:     90 * time.Second,
 		}
+		http2.ConfigureTransport(transport)
 		return &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   120 * time.Second, // Increased for large page loads
 		}
 
 	case "h3":
@@ -408,6 +415,7 @@ func downloadImages(client *http.Client, baseURL string, htmlContent []byte, pro
 				}
 			}()
 			downloadImage(client, imageURL)
+			print("downloaded image: ", imageURL, " done.\n")
 		}(resolvedURL.String())
 	}
 	wg.Wait()
@@ -434,7 +442,7 @@ func downloadImage(client *http.Client, imageURL string) {
 	}
 	defer resp.Body.Close()
 
-	io.Copy(io.Discard, resp.Body)
+	// io.Copy(io.Discard, resp.Body)
 }
 
 func aggregateResults(protocol string, results []TimingResult, totalDuration time.Duration) *BenchmarkResult {

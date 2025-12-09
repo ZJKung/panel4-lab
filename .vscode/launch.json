@@ -1,0 +1,28 @@
+{
+    // VS Code launch configurations
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug httpbench (Go)",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/httpbench",
+            "args": [
+                "-url",
+                "https://http-evolution-benchmark.zjkung1123.workers.dev/",
+                "-n",
+                "100",
+                "-c",
+                "1",
+                "-p",
+                "h1",
+                "-browser",
+                "-w",
+                "0"
+            ],
+            "env": {},
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
